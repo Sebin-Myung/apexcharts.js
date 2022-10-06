@@ -2026,6 +2026,7 @@
        *  @return [34,36,48,13]
        **/
       function getStackedSeriesTotals() {
+        var excludedSeriesIndices = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : [];
         var w = this.w;
         var total = [];
         if (w.globals.series.length === 0) return total;
@@ -2034,7 +2035,7 @@
           var t = 0;
 
           for (var j = 0; j < w.globals.series.length; j++) {
-            if (typeof w.globals.series[j][i] !== 'undefined') {
+            if (typeof w.globals.series[j][i] !== 'undefined' && excludedSeriesIndices.indexOf(j) === -1) {
               t += w.globals.series[j][i];
             }
           }
@@ -2042,7 +2043,6 @@
           total.push(t);
         }
 
-        w.globals.stackedSeriesTotals = total;
         return total;
       } // get total of the all values inside all series
 
@@ -3293,6 +3293,7 @@
               click: undefined,
               mouseMove: undefined,
               mouseLeave: undefined,
+              xAxisLabelClick: undefined,
               legendClick: undefined,
               markerClick: undefined,
               selection: undefined,
@@ -3426,8 +3427,19 @@
                 // top, center, bottom
                 maxItems: 100,
                 hideOverflowingLabels: true,
-                orientation: 'horizontal' // TODO: provide stackedLabels for stacked charts which gives additions of values
-
+                orientation: 'horizontal',
+                total: {
+                  enabled: false,
+                  formatter: undefined,
+                  offsetX: 0,
+                  offsetY: 0,
+                  style: {
+                    color: '#373d3f',
+                    fontSize: '12px',
+                    fontFamily: undefined,
+                    fontWeight: 600
+                  }
+                }
               }
             },
             bubble: {
@@ -4529,7 +4541,7 @@
           });
         }
 
-        var fillType = this.getFillType(this.seriesIndex);
+        var fillType = opts.fillType ? opts.fillType : this.getFillType(this.seriesIndex);
         var fillOpacity = Array.isArray(cnf.fill.opacity) ? cnf.fill.opacity[this.seriesIndex] : cnf.fill.opacity;
 
         if (opts.color) {
@@ -4552,11 +4564,22 @@
         if (opts.opacity) fillOpacity = opts.opacity;
 
         if (fillType === 'pattern') {
-          patternFill = this.handlePatternFill(patternFill, fillColor, fillOpacity, defaultColor);
+          patternFill = this.handlePatternFill({
+            fillConfig: opts.fillConfig,
+            patternFill: patternFill,
+            fillColor: fillColor,
+            fillOpacity: fillOpacity,
+            defaultColor: defaultColor
+          });
         }
 
         if (fillType === 'gradient') {
-          gradientFill = this.handleGradientFill(fillColor, fillOpacity, this.seriesIndex);
+          gradientFill = this.handleGradientFill({
+            fillConfig: opts.fillConfig,
+            fillColor: fillColor,
+            fillOpacity: fillOpacity,
+            i: this.seriesIndex
+          });
         }
 
         if (fillType === 'image') {
@@ -4650,53 +4673,72 @@
       }
     }, {
       key: "handlePatternFill",
-      value: function handlePatternFill(patternFill, fillColor, fillOpacity, defaultColor) {
-        var cnf = this.w.config;
+      value: function handlePatternFill(_ref) {
+        var fillConfig = _ref.fillConfig,
+            patternFill = _ref.patternFill,
+            fillColor = _ref.fillColor,
+            fillOpacity = _ref.fillOpacity,
+            defaultColor = _ref.defaultColor;
+        var fillCnf = this.w.config.fill;
+
+        if (fillConfig) {
+          fillCnf = fillConfig;
+        }
+
         var opts = this.opts;
         var graphics = new Graphics(this.ctx);
-        var patternStrokeWidth = cnf.fill.pattern.strokeWidth === undefined ? Array.isArray(cnf.stroke.width) ? cnf.stroke.width[this.seriesIndex] : cnf.stroke.width : Array.isArray(cnf.fill.pattern.strokeWidth) ? cnf.fill.pattern.strokeWidth[this.seriesIndex] : cnf.fill.pattern.strokeWidth;
+        var patternStrokeWidth = Array.isArray(fillCnf.pattern.strokeWidth) ? fillCnf.pattern.strokeWidth[this.seriesIndex] : fillCnf.pattern.strokeWidth;
         var patternLineColor = fillColor;
 
-        if (Array.isArray(cnf.fill.pattern.style)) {
-          if (typeof cnf.fill.pattern.style[opts.seriesNumber] !== 'undefined') {
-            var pf = graphics.drawPattern(cnf.fill.pattern.style[opts.seriesNumber], cnf.fill.pattern.width, cnf.fill.pattern.height, patternLineColor, patternStrokeWidth, fillOpacity);
+        if (Array.isArray(fillCnf.pattern.style)) {
+          if (typeof fillCnf.pattern.style[opts.seriesNumber] !== 'undefined') {
+            var pf = graphics.drawPattern(fillCnf.pattern.style[opts.seriesNumber], fillCnf.pattern.width, fillCnf.pattern.height, patternLineColor, patternStrokeWidth, fillOpacity);
             patternFill = pf;
           } else {
             patternFill = defaultColor;
           }
         } else {
-          patternFill = graphics.drawPattern(cnf.fill.pattern.style, cnf.fill.pattern.width, cnf.fill.pattern.height, patternLineColor, patternStrokeWidth, fillOpacity);
+          patternFill = graphics.drawPattern(fillCnf.pattern.style, fillCnf.pattern.width, fillCnf.pattern.height, patternLineColor, patternStrokeWidth, fillOpacity);
         }
 
         return patternFill;
       }
     }, {
       key: "handleGradientFill",
-      value: function handleGradientFill(fillColor, fillOpacity, i) {
-        var cnf = this.w.config;
+      value: function handleGradientFill(_ref2) {
+        var fillColor = _ref2.fillColor,
+            fillOpacity = _ref2.fillOpacity,
+            fillConfig = _ref2.fillConfig,
+            i = _ref2.i;
+        var fillCnf = this.w.config.fill;
+
+        if (fillConfig) {
+          fillCnf = fillConfig;
+        }
+
         var opts = this.opts;
         var graphics = new Graphics(this.ctx);
         var utils = new Utils$1();
-        var type = cnf.fill.gradient.type;
+        var type = fillCnf.gradient.type;
         var gradientFrom = fillColor;
         var gradientTo;
-        var opacityFrom = cnf.fill.gradient.opacityFrom === undefined ? fillOpacity : Array.isArray(cnf.fill.gradient.opacityFrom) ? cnf.fill.gradient.opacityFrom[i] : cnf.fill.gradient.opacityFrom;
+        var opacityFrom = fillCnf.gradient.opacityFrom === undefined ? fillOpacity : Array.isArray(fillCnf.gradient.opacityFrom) ? fillCnf.gradient.opacityFrom[i] : fillCnf.gradient.opacityFrom;
 
         if (gradientFrom.indexOf('rgba') > -1) {
           opacityFrom = Utils$1.getOpacityFromRGBA(gradientFrom);
         }
 
-        var opacityTo = cnf.fill.gradient.opacityTo === undefined ? fillOpacity : Array.isArray(cnf.fill.gradient.opacityTo) ? cnf.fill.gradient.opacityTo[i] : cnf.fill.gradient.opacityTo;
+        var opacityTo = fillCnf.gradient.opacityTo === undefined ? fillOpacity : Array.isArray(fillCnf.gradient.opacityTo) ? fillCnf.gradient.opacityTo[i] : fillCnf.gradient.opacityTo;
 
-        if (cnf.fill.gradient.gradientToColors === undefined || cnf.fill.gradient.gradientToColors.length === 0) {
-          if (cnf.fill.gradient.shade === 'dark') {
-            gradientTo = utils.shadeColor(parseFloat(cnf.fill.gradient.shadeIntensity) * -1, fillColor.indexOf('rgb') > -1 ? Utils$1.rgb2hex(fillColor) : fillColor);
+        if (fillCnf.gradient.gradientToColors === undefined || fillCnf.gradient.gradientToColors.length === 0) {
+          if (fillCnf.gradient.shade === 'dark') {
+            gradientTo = utils.shadeColor(parseFloat(fillCnf.gradient.shadeIntensity) * -1, fillColor.indexOf('rgb') > -1 ? Utils$1.rgb2hex(fillColor) : fillColor);
           } else {
-            gradientTo = utils.shadeColor(parseFloat(cnf.fill.gradient.shadeIntensity), fillColor.indexOf('rgb') > -1 ? Utils$1.rgb2hex(fillColor) : fillColor);
+            gradientTo = utils.shadeColor(parseFloat(fillCnf.gradient.shadeIntensity), fillColor.indexOf('rgb') > -1 ? Utils$1.rgb2hex(fillColor) : fillColor);
           }
         } else {
-          if (cnf.fill.gradient.gradientToColors[opts.seriesNumber]) {
-            var gToColor = cnf.fill.gradient.gradientToColors[opts.seriesNumber];
+          if (fillCnf.gradient.gradientToColors[opts.seriesNumber]) {
+            var gToColor = fillCnf.gradient.gradientToColors[opts.seriesNumber];
             gradientTo = gToColor;
 
             if (gToColor.indexOf('rgba') > -1) {
@@ -4707,7 +4749,15 @@
           }
         }
 
-        if (cnf.fill.gradient.inverseColors) {
+        if (fillCnf.gradient.gradientFrom) {
+          gradientFrom = fillCnf.gradient.gradientFrom;
+        }
+
+        if (fillCnf.gradient.gradientTo) {
+          gradientTo = fillCnf.gradient.gradientTo;
+        }
+
+        if (fillCnf.gradient.inverseColors) {
           var t = gradientFrom;
           gradientFrom = gradientTo;
           gradientTo = t;
@@ -4721,7 +4771,7 @@
           gradientTo = Utils$1.rgb2hex(gradientTo);
         }
 
-        return graphics.drawGradient(type, gradientFrom, gradientTo, opacityFrom, opacityTo, opts.size, cnf.fill.gradient.stops, cnf.fill.gradient.colorStops, i);
+        return graphics.drawGradient(type, gradientFrom, gradientTo, opacityFrom, opacityTo, opts.size, fillCnf.gradient.stops, fillCnf.gradient.colorStops, i);
       }
     }]);
 
@@ -5451,6 +5501,11 @@
 
       this.w = barCtx.w;
       this.barCtx = barCtx;
+      this.totalFormatter = this.w.config.plotOptions.bar.dataLabels.total.formatter;
+
+      if (!this.totalFormatter) {
+        this.totalFormatter = this.w.config.dataLabels.formatter;
+      }
     }
     /** handleBarDataLabels is used to calculate the positions for the data-labels
      * It also sets the element's data attr for bars and calls drawCalculatedBarDataLabels()
@@ -5490,11 +5545,13 @@
         }
 
         var dataLabels = null;
+        var totalDataLabels = null;
         var dataLabelsX = x;
         var dataLabelsY = y;
         var dataLabelsPos = {};
         var dataLabelsConfig = w.config.dataLabels;
         var barDataLabelsConfig = this.barCtx.barOptions.dataLabels;
+        var barTotalDataLabelsConfig = this.barCtx.barOptions.dataLabels.total;
 
         if (typeof barYPosition !== 'undefined' && this.barCtx.isRangeBar) {
           bcy = barYPosition;
@@ -5518,6 +5575,7 @@
           y: y,
           i: i,
           j: j,
+          realIndex: realIndex,
           renderedPath: renderedPath,
           bcx: bcx,
           bcy: bcy,
@@ -5527,7 +5585,9 @@
           strokeWidth: strokeWidth,
           dataLabelsX: dataLabelsX,
           dataLabelsY: dataLabelsY,
+          dataLabelsConfig: dataLabelsConfig,
           barDataLabelsConfig: barDataLabelsConfig,
+          barTotalDataLabelsConfig: barTotalDataLabelsConfig,
           offX: offX,
           offY: offY
         };
@@ -5557,7 +5617,44 @@
           textRects: textRects,
           dataLabelsConfig: dataLabelsConfig
         });
-        return dataLabels;
+
+        if (w.config.chart.stacked && barTotalDataLabelsConfig.enabled) {
+          totalDataLabels = this.drawTotalDataLabels({
+            x: dataLabelsPos.totalDataLabelsX,
+            y: dataLabelsPos.totalDataLabelsY,
+            realIndex: realIndex,
+            textAnchor: dataLabelsPos.totalDataLabelsAnchor,
+            val: this.getStackedTotalDataLabel({
+              realIndex: realIndex,
+              j: j
+            }),
+            dataLabelsConfig: dataLabelsConfig,
+            barTotalDataLabelsConfig: barTotalDataLabelsConfig
+          });
+        }
+
+        return {
+          dataLabels: dataLabels,
+          totalDataLabels: totalDataLabels
+        };
+      }
+    }, {
+      key: "getStackedTotalDataLabel",
+      value: function getStackedTotalDataLabel(_ref) {
+        var realIndex = _ref.realIndex,
+            j = _ref.j;
+        var w = this.w;
+        var val = this.barCtx.stackedSeriesTotals[j];
+
+        if (this.totalFormatter) {
+          val = this.totalFormatter(val, _objectSpread2(_objectSpread2({}, w), {}, {
+            seriesIndex: realIndex,
+            dataPointIndex: j,
+            w: w
+          }));
+        }
+
+        return val;
       }
     }, {
       key: "calculateColumnsDataLabelsPosition",
@@ -5565,17 +5662,23 @@
         var w = this.w;
         var i = opts.i,
             j = opts.j,
+            realIndex = opts.realIndex,
             y = opts.y,
             bcx = opts.bcx,
             barWidth = opts.barWidth,
             barHeight = opts.barHeight,
             textRects = opts.textRects,
             dataLabelsY = opts.dataLabelsY,
+            dataLabelsConfig = opts.dataLabelsConfig,
             barDataLabelsConfig = opts.barDataLabelsConfig,
+            barTotalDataLabelsConfig = opts.barTotalDataLabelsConfig,
             strokeWidth = opts.strokeWidth,
             offX = opts.offX,
             offY = opts.offY;
         var dataLabelsX;
+        var totalDataLabelsY;
+        var totalDataLabelsX;
+        var totalDataLabelsAnchor = 'middle';
         barHeight = Math.abs(barHeight);
         var vertical = w.config.plotOptions.bar.dataLabels.orientation === 'vertical';
         bcx = bcx - strokeWidth / 2;
@@ -5653,6 +5756,23 @@
             break;
         }
 
+        if (this.barCtx.lastActiveBarSerieIndex === realIndex && barTotalDataLabelsConfig.enabled) {
+          var ADDITIONAL_OFFX = 18;
+          var graphics = new Graphics(this.barCtx.ctx);
+          var totalLabeltextRects = graphics.getTextRects(this.getStackedTotalDataLabel({
+            realIndex: realIndex,
+            j: j
+          }), dataLabelsConfig.fontSize);
+
+          if (valIsNegative) {
+            totalDataLabelsY = newY - totalLabeltextRects.height / 2 - offY - barTotalDataLabelsConfig.offsetY + ADDITIONAL_OFFX;
+          } else {
+            totalDataLabelsY = newY + totalLabeltextRects.height + offY + barTotalDataLabelsConfig.offsetY - ADDITIONAL_OFFX;
+          }
+
+          totalDataLabelsX = dataLabelsX + barTotalDataLabelsConfig.offsetX;
+        }
+
         if (!w.config.chart.stacked) {
           if (dataLabelsY < 0) {
             dataLabelsY = 0 + strokeWidth;
@@ -5665,7 +5785,10 @@
           bcx: bcx,
           bcy: y,
           dataLabelsX: dataLabelsX,
-          dataLabelsY: dataLabelsY
+          dataLabelsY: dataLabelsY,
+          totalDataLabelsX: totalDataLabelsX,
+          totalDataLabelsY: totalDataLabelsY,
+          totalDataLabelsAnchor: totalDataLabelsAnchor
         };
       }
     }, {
@@ -5675,18 +5798,24 @@
         var x = opts.x,
             i = opts.i,
             j = opts.j,
+            realIndex = opts.realIndex,
             bcy = opts.bcy,
             barHeight = opts.barHeight,
             barWidth = opts.barWidth,
             textRects = opts.textRects,
             dataLabelsX = opts.dataLabelsX,
             strokeWidth = opts.strokeWidth,
+            dataLabelsConfig = opts.dataLabelsConfig,
             barDataLabelsConfig = opts.barDataLabelsConfig,
+            barTotalDataLabelsConfig = opts.barTotalDataLabelsConfig,
             offX = opts.offX,
             offY = opts.offY;
         var dataPointsDividedHeight = w.globals.gridHeight / w.globals.dataPoints;
         barWidth = Math.abs(barWidth);
         var dataLabelsY = bcy - (this.barCtx.isRangeBar ? 0 : dataPointsDividedHeight) + barHeight / 2 + textRects.height / 2 + offY - 3;
+        var totalDataLabelsX;
+        var totalDataLabelsY;
+        var totalDataLabelsAnchor = 'start';
         var valIsNegative = this.barCtx.series[i][j] < 0;
         var newX = x;
 
@@ -5724,6 +5853,24 @@
             break;
         }
 
+        if (this.barCtx.lastActiveBarSerieIndex === realIndex && barTotalDataLabelsConfig.enabled) {
+          var ADDITIONAL_OFFX = 15;
+          var graphics = new Graphics(this.barCtx.ctx);
+          var totalLabeltextRects = graphics.getTextRects(this.getStackedTotalDataLabel({
+            realIndex: realIndex,
+            j: j
+          }), dataLabelsConfig.fontSize);
+
+          if (valIsNegative) {
+            totalDataLabelsX = newX - strokeWidth + Math.round(totalLabeltextRects.width / 2) - offX - barTotalDataLabelsConfig.offsetX - ADDITIONAL_OFFX;
+            totalDataLabelsAnchor = 'end';
+          } else {
+            totalDataLabelsX = newX - strokeWidth - Math.round(totalLabeltextRects.width / 2) + offX + barTotalDataLabelsConfig.offsetX + ADDITIONAL_OFFX;
+          }
+
+          totalDataLabelsY = dataLabelsY + barTotalDataLabelsConfig.offsetY;
+        }
+
         if (!w.config.chart.stacked) {
           if (dataLabelsX < 0) {
             dataLabelsX = dataLabelsX + textRects.width + strokeWidth;
@@ -5736,21 +5883,24 @@
           bcx: x,
           bcy: bcy,
           dataLabelsX: dataLabelsX,
-          dataLabelsY: dataLabelsY
+          dataLabelsY: dataLabelsY,
+          totalDataLabelsX: totalDataLabelsX,
+          totalDataLabelsY: totalDataLabelsY,
+          totalDataLabelsAnchor: totalDataLabelsAnchor
         };
       }
     }, {
       key: "drawCalculatedDataLabels",
-      value: function drawCalculatedDataLabels(_ref) {
-        var x = _ref.x,
-            y = _ref.y,
-            val = _ref.val,
-            i = _ref.i,
-            j = _ref.j,
-            textRects = _ref.textRects,
-            barHeight = _ref.barHeight,
-            barWidth = _ref.barWidth,
-            dataLabelsConfig = _ref.dataLabelsConfig;
+      value: function drawCalculatedDataLabels(_ref2) {
+        var x = _ref2.x,
+            y = _ref2.y,
+            val = _ref2.val,
+            i = _ref2.i,
+            j = _ref2.j,
+            textRects = _ref2.textRects,
+            barHeight = _ref2.barHeight,
+            barWidth = _ref2.barWidth,
+            dataLabelsConfig = _ref2.dataLabelsConfig;
         var w = this.w;
         var rotate = 'rotate(0)';
         if (w.config.plotOptions.bar.dataLabels.orientation === 'vertical') rotate = "rotate(-90, ".concat(x, ", ").concat(y, ")");
@@ -5768,11 +5918,11 @@
           var text = '';
 
           if (typeof val !== 'undefined') {
-            text = formatter(val, {
+            text = formatter(val, _objectSpread2(_objectSpread2({}, w), {}, {
               seriesIndex: i,
               dataPointIndex: j,
               w: w
-            });
+            }));
           }
 
           var valIsNegative = w.globals.series[i][j] < 0;
@@ -5841,6 +5991,33 @@
         }
 
         return elDataLabelsWrap;
+      }
+    }, {
+      key: "drawTotalDataLabels",
+      value: function drawTotalDataLabels(_ref3) {
+        var x = _ref3.x,
+            y = _ref3.y,
+            val = _ref3.val,
+            realIndex = _ref3.realIndex,
+            textAnchor = _ref3.textAnchor,
+            barTotalDataLabelsConfig = _ref3.barTotalDataLabelsConfig;
+        var graphics = new Graphics(this.barCtx.ctx);
+        var totalDataLabelText;
+
+        if (barTotalDataLabelsConfig.enabled && typeof x !== 'undefined' && typeof y !== 'undefined' && this.barCtx.lastActiveBarSerieIndex === realIndex) {
+          totalDataLabelText = graphics.drawText({
+            x: x,
+            y: y,
+            foreColor: barTotalDataLabelsConfig.style.color,
+            text: val,
+            textAnchor: textAnchor,
+            fontFamily: barTotalDataLabelsConfig.style.fontFamily,
+            fontSize: barTotalDataLabelsConfig.style.fontSize,
+            fontWeight: barTotalDataLabelsConfig.style.fontWeight
+          });
+        }
+
+        return totalDataLabelText;
       }
     }]);
 
@@ -6047,21 +6224,24 @@
     }, {
       key: "getActiveConfigSeriesIndex",
       value: function getActiveConfigSeriesIndex() {
-        var ignoreBars = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
-        var order = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'asc';
+        var order = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 'asc';
+        var chartTypes = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : [];
         var w = this.w;
         var activeIndex = 0;
 
         if (w.config.series.length > 1) {
           // active series flag is required to know if user has not deactivated via legend click
           var activeSeriesIndex = w.config.series.map(function (s, index) {
-            var hasBars = false;
+            var checkChartType = function checkChartType() {
+              if (w.globals.comboCharts) {
+                return chartTypes.length === 0 || chartTypes.length && chartTypes.indexOf(w.config.series[index].type) > -1;
+              }
 
-            if (ignoreBars) {
-              hasBars = w.config.series[index].type === 'bar' || w.config.series[index].type === 'column';
-            }
+              return true;
+            };
 
-            return s.data && s.data.length > 0 && !hasBars ? index : -1;
+            var hasData = s.data && s.data.length > 0;
+            return hasData && checkChartType() ? index : -1;
           });
 
           for (var a = order === 'asc' ? 0 : activeSeriesIndex.length - 1; order === 'asc' ? a < activeSeriesIndex.length : a >= 0; order === 'asc' ? a++ : a--) {
@@ -6073,6 +6253,23 @@
         }
 
         return activeIndex;
+      }
+    }, {
+      key: "getBarSeriesIndices",
+      value: function getBarSeriesIndices() {
+        var w = this.w;
+
+        if (w.globals.comboCharts) {
+          return this.w.config.series.map(function (s, i) {
+            return s.type === 'bar' || s.type === 'column' ? i : -1;
+          }).filter(function (i) {
+            return i !== -1;
+          });
+        }
+
+        return this.w.config.series.map(function (s, i) {
+          return i;
+        });
       }
     }, {
       key: "getPreviousPaths",
@@ -6407,6 +6604,8 @@
     }, {
       key: "getPathFillColor",
       value: function getPathFillColor(series, i, j, realIndex) {
+        var _w$config$series$i$da;
+
         var w = this.w;
         var fill = new Fill(this.barCtx.ctx);
         var fillColor = null;
@@ -6429,7 +6628,9 @@
           seriesNumber: this.barCtx.barOptions.distributed ? seriesNumber : realIndex,
           dataPointIndex: j,
           color: fillColor,
-          value: series[i][j]
+          value: series[i][j],
+          fillConfig: w.config.series[i].data[j].fill,
+          fillType: (_w$config$series$i$da = w.config.series[i].data[j].fill) !== null && _w$config$series$i$da !== void 0 && _w$config$series$i$da.type ? w.config.series[i].data[j].fill.type : w.config.fill.type
         });
         return pathFill;
       }
@@ -6799,6 +7000,15 @@
 
       this.yaxisIndex = 0;
       this.seriesLen = 0;
+      var ser = new Series(this.ctx);
+      this.lastActiveBarSerieIndex = ser.getActiveConfigSeriesIndex('desc', ['bar', 'column']);
+      var barSeriesIndices = ser.getBarSeriesIndices();
+      var coreUtils = new CoreUtils(this.ctx);
+      this.stackedSeriesTotals = coreUtils.getStackedSeriesTotals(this.w.config.series.map(function (s, i) {
+        return barSeriesIndices.indexOf(i) === -1 ? i : -1;
+      }).filter(function (s) {
+        return s !== -1;
+      }));
       this.barHelpers = new Helpers$3(this);
     }
     /** primary draw method which is called on bar object
@@ -7049,7 +7259,7 @@
         filters.setSelectionFilter(renderedPath, realIndex, j);
         elSeries.add(renderedPath);
         var barDataLabels = new BarDataLabels(this);
-        var dataLabels = barDataLabels.handleBarDataLabels({
+        var dataLabelsObj = barDataLabels.handleBarDataLabels({
           x: x,
           y: y,
           y1: y1,
@@ -7065,8 +7275,12 @@
           visibleSeries: visibleSeries
         });
 
-        if (dataLabels !== null) {
-          elDataLabelsWrap.add(dataLabels);
+        if (dataLabelsObj.dataLabels !== null) {
+          elDataLabelsWrap.add(dataLabelsObj.dataLabels);
+        }
+
+        if (dataLabelsObj.totalDataLabels) {
+          elDataLabelsWrap.add(dataLabelsObj.totalDataLabels);
         }
 
         elSeries.add(elDataLabelsWrap);
@@ -9940,7 +10154,7 @@
         this.coreUtils.getSeriesTotals();
 
         if (gl.axisCharts) {
-          this.coreUtils.getStackedSeriesTotals();
+          gl.stackedSeriesTotals = this.coreUtils.getStackedSeriesTotals();
         }
 
         this.coreUtils.getPercentSeries();
@@ -10560,11 +10774,17 @@
         var rows = [];
         var result = '';
         var universalBOM = "\uFEFF";
+        var gSeries = w.globals.series.map(function (s, i) {
+          return w.globals.collapsedSeriesIndices.indexOf(i) === -1 ? s : [];
+        });
 
         var isTimeStamp = function isTimeStamp(num) {
           return w.config.xaxis.type === 'datetime' && String(num).length >= 10;
         };
 
+        var seriesMaxDataLength = Math.max.apply(Math, _toConsumableArray(series.map(function (s) {
+          return s.data ? s.data.length : 0;
+        })));
         var dataFormat = new Data(this.ctx);
         var axesUtils = new AxesUtils(this.ctx);
 
@@ -10606,6 +10826,13 @@
           }
 
           return Utils$1.isNumber(cat) ? cat : cat.split(columnDelimiter).join('');
+        }; // Fix https://github.com/apexcharts/apexcharts.js/issues/3365
+
+
+        var getEmptyDataForCsvColumn = function getEmptyDataForCsvColumn() {
+          return _toConsumableArray(Array(seriesMaxDataLength)).map(function () {
+            return '';
+          });
         };
 
         var handleAxisRowsColumns = function handleAxisRowsColumns(s, sI) {
@@ -10613,7 +10840,9 @@
             rows.push(columns.join(columnDelimiter));
           }
 
-          if (s.data && s.data.length) {
+          if (s.data) {
+            s.data = s.data.length && s.data || getEmptyDataForCsvColumn();
+
             for (var i = 0; i < s.data.length; i++) {
               columns = [];
               var cat = getCat(i);
@@ -10633,7 +10862,7 @@
                   if (dataFormat.isFormatXY()) {
                     columns.push(series[ci].data[i].y);
                   } else {
-                    columns.push(w.globals.series[ci][i]);
+                    columns.push(gSeries[ci][i]);
                   }
                 }
               }
@@ -10705,7 +10934,7 @@
           } else {
             columns = [];
             columns.push(w.globals.labels[sI].split(columnDelimiter).join(''));
-            columns.push(w.globals.series[sI]);
+            columns.push(gSeries[sI]);
             rows.push(columns.join(columnDelimiter));
           }
         });
@@ -10737,6 +10966,7 @@
     function XAxis(ctx) {
       _classCallCheck(this, XAxis);
 
+      console.log('xaxis');
       this.ctx = ctx;
       this.w = ctx.w;
       var w = this.w;
@@ -10882,7 +11112,9 @@
          * Also, in datetime/numeric xaxis, dataPoints can be misleading, so we resort to labelsLen for such xaxis type
          */
 
-        var dataPoints = w.config.xaxis.type === 'category' ? w.globals.dataPoints : labelsLen;
+        var dataPoints = w.config.xaxis.type === 'category' ? w.globals.dataPoints : labelsLen; // when all series are collapsed, fixes #3381
+
+        if (dataPoints === 0 && labelsLen > dataPoints) dataPoints = labelsLen;
 
         if (isXNumeric) {
           var len = dataPoints > 1 ? dataPoints - 1 : dataPoints;
@@ -10943,6 +11175,14 @@
               cssClass: (isLeafGroup ? 'apexcharts-xaxis-label ' : 'apexcharts-xaxis-group-label ') + cssClass
             });
             elXaxisTexts.add(elText);
+            elText.on('click', function (e) {
+              if (typeof w.config.chart.events.xAxisLabelClick === 'function') {
+                var opts = Object.assign({}, w, {
+                  labelIndex: i
+                });
+                w.config.chart.events.xAxisLabelClick(e, _this.ctx, opts);
+              }
+            });
 
             if (isLeafGroup) {
               var elTooltipTitle = document.createElementNS(w.globals.SVGNS, 'title');
@@ -11034,6 +11274,14 @@
               maxWidth: ylabels.maxWidth
             });
             elYaxisTexts.add(elLabel);
+            elLabel.on('click', function (e) {
+              if (typeof w.config.chart.events.xAxisLabelClick === 'function') {
+                var opts = Object.assign({}, w, {
+                  labelIndex: _i2
+                });
+                w.config.chart.events.xAxisLabelClick(e, _this2.ctx, opts);
+              }
+            });
             var elTooltipTitle = document.createElementNS(w.globals.SVGNS, 'title');
             elTooltipTitle.textContent = Array.isArray(label) ? label.join(' ') : label;
             elLabel.node.appendChild(elTooltipTitle);
@@ -17822,7 +18070,7 @@
         var activeSeries = 0;
         var pointsArr = w.globals.pointsArray;
         var series = new Series(this.ctx);
-        activeSeries = series.getActiveConfigSeriesIndex(true);
+        activeSeries = series.getActiveConfigSeriesIndex('asc', ['line', 'area', 'scatter', 'bubble']);
         var hoverSize = ttCtx.tooltipUtil.getHoverMarkerSize(activeSeries);
 
         if (pointsArr[activeSeries]) {
@@ -17875,7 +18123,7 @@
 
         if (w.globals.isBarHorizontal) {
           var series = new Series(this.ctx);
-          i = series.getActiveConfigSeriesIndex(false, 'desc') + 1;
+          i = series.getActiveConfigSeriesIndex('desc') + 1;
         }
 
         var jBar = w.globals.dom.baseEl.querySelector(".apexcharts-bar-series .apexcharts-series[rel='".concat(i, "'] path[j='").concat(j, "'], .apexcharts-candlestick-series .apexcharts-series[rel='").concat(i, "'] path[j='").concat(j, "'], .apexcharts-boxPlot-series .apexcharts-series[rel='").concat(i, "'] path[j='").concat(j, "'], .apexcharts-rangebar-series .apexcharts-series[rel='").concat(i, "'] path[j='").concat(j, "']"));
@@ -19521,6 +19769,11 @@
             'data:realIndex': realIndex
           });
 
+          var elGoalsMarkers = _this.graphics.group({
+            class: 'apexcharts-bar-goals-markers',
+            style: "pointer-events: none"
+          });
+
           var barHeight = 0;
           var barWidth = 0;
 
@@ -19592,6 +19845,19 @@
               barHeight = _this.series[i][j] / _this.yRatio[_this.yaxisIndex];
             }
 
+            var barGoalLine = _this.barHelpers.drawGoalLine({
+              barXPosition: paths.barXPosition,
+              barYPosition: paths.barYPosition,
+              goalX: paths.goalX,
+              goalY: paths.goalY,
+              barHeight: barHeight,
+              barWidth: barWidth
+            });
+
+            if (barGoalLine) {
+              elGoalsMarkers.add(barGoalLine);
+            }
+
             y = paths.y;
             x = paths.x;
             xArrValues.push(x);
@@ -19614,6 +19880,7 @@
               barHeight: barHeight,
               barWidth: barWidth,
               elDataLabelsWrap: elDataLabelsWrap,
+              elGoalsMarkers: elGoalsMarkers,
               type: 'bar',
               visibleSeries: 0
             });
@@ -19671,7 +19938,7 @@
             barWidth = barWidth * parseInt(w.config.plotOptions.bar.columnWidth, 10) / 100;
           }
 
-          zeroH = this.baseLineY[this.yaxisIndex] + (this.isReversed ? w.globals.gridHeight : 0) - (this.isReversed ? this.baseLineY[this.yaxisIndex] * 2 : 0); // initial x position is one third of barWidth
+          zeroH = w.globals.gridHeight - this.baseLineY[this.yaxisIndex] + (this.isReversed ? w.globals.gridHeight : 0) - (this.isReversed ? this.baseLineY[this.yaxisIndex] * 2 : 0); // initial x position is one third of barWidth
 
           x = w.globals.padHorizontal + (xDivision - barWidth) / 2;
         }
@@ -19753,6 +20020,8 @@
         return {
           pathTo: paths.pathTo,
           pathFrom: paths.pathFrom,
+          goalX: this.barHelpers.getGoalValues('x', zeroW, null, i, j),
+          barYPosition: barYPosition,
           x: x,
           y: y
         };
@@ -19829,14 +20098,14 @@
             });
           })) {
             // Use the same calc way as line #485
-            barYPosition = w.globals.gridHeight - zeroH;
+            barYPosition = zeroH;
           } else {
             // Nothing special
             barYPosition = bYP;
           }
         } else {
           // the first series will not have prevY values, also if the prev index's series X doesn't matches the current index's series X, then start from zero
-          barYPosition = w.globals.gridHeight - zeroH;
+          barYPosition = zeroH;
         }
 
         y = barYPosition - this.series[i][j] / this.yRatio[this.yaxisIndex] + (this.isReversed ? this.series[i][j] / this.yRatio[this.yaxisIndex] : 0) * 2;
@@ -19865,6 +20134,8 @@
         return {
           pathTo: paths.pathTo,
           pathFrom: paths.pathFrom,
+          goalY: this.barHelpers.getGoalValues('y', null, zeroH, i, j),
+          barXPosition: barXPosition,
           x: w.globals.isXNumeric ? x - xDivision : x,
           y: y
         };

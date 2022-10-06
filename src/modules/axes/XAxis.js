@@ -9,6 +9,7 @@ import AxesUtils from './AxesUtils'
 
 export default class XAxis {
   constructor(ctx) {
+    console.log('xaxis')
     this.ctx = ctx
     this.w = ctx.w
 
